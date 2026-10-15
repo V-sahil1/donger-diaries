@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef } from 'react';
-import { heroImage } from '../data/content.js';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { heroPoster, heroVideo } from '../data/content.js';
 import { gsap } from '../lib/gsap.js';
 import { useTheme } from '../theme/ThemeContext.jsx';
 import Icon from './Icon.jsx';
@@ -57,6 +57,39 @@ function Ticker() {
 export default function Hero({ ready }) {
   const { isDark } = useTheme();
   const root = useRef(null);
+  const videoRef = useRef(null);
+
+  // Keep the background loop playing: resume after tab switches, unexpected
+  // pauses, or an autoplay block (retried on the first user interaction).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+    // A touch faster so the slow drone shots read as motion, without making the
+    // train and waterfall look sped up.
+    const setRate = () => {
+      video.defaultPlaybackRate = 1.15;
+      video.playbackRate = 1.15;
+    };
+    setRate();
+    video.addEventListener('loadedmetadata', setRate);
+    const play = () => {
+      if (document.hidden || !video.paused) return;
+      video.play().catch(() => {});
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    play();
+    video.addEventListener('pause', play);
+    video.addEventListener('canplay', play);
+    document.addEventListener('visibilitychange', play);
+    events.forEach((e) => window.addEventListener(e, play, { passive: true }));
+    return () => {
+      video.removeEventListener('loadedmetadata', setRate);
+      video.removeEventListener('pause', play);
+      video.removeEventListener('canplay', play);
+      document.removeEventListener('visibilitychange', play);
+      events.forEach((e) => window.removeEventListener(e, play));
+    };
+  }, []);
 
   // GSAP intro: plays as the loader curtain opens.
   useLayoutEffect(() => {
@@ -68,7 +101,9 @@ export default function Hero({ ready }) {
         .from('.hero__line-inner', { yPercent: 115, rotate: 2, stagger: 0.14, duration: 1.2 }, 0.45)
         .from('.hero__lede', { y: 24, opacity: 0, duration: 0.9 }, 0.9)
         .from('.hero__actions .btn', { y: 22, opacity: 0, stagger: 0.1, duration: 0.8 }, 1.05)
-        .from('.hero__ticker-bar', { yPercent: 100, opacity: 0, duration: 0.9 }, 1.1);
+        .from('.hero__ticker-bar', { yPercent: 100, opacity: 0, duration: 0.9 }, 1.1)
+        // Slow camera drift on top of the footage, forever.
+        .to('.hero__bg', { scale: 1.14, xPercent: -2, duration: 16, ease: 'sine.inOut', yoyo: true, repeat: -1 }, 2.4);
     }, root);
     return () => ctx.revert();
   }, [ready]);
@@ -91,7 +126,18 @@ export default function Hero({ ready }) {
       id="top"
       className={`hero hero--cinematic${isDark ? '' : ' hero--light'}`}
     >
-      <div className="hero__bg" style={{ backgroundImage: `url(${heroImage})` }} />
+      <video
+        ref={videoRef}
+        className="hero__bg"
+        src={heroVideo}
+        poster={heroPoster}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+      />
       <div className="hero__scrim" />
 
       <div className="container hero__content">

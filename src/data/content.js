@@ -9,7 +9,9 @@ export const navLinks = [
   { label: 'Contact', href: '#contact' },
 ];
 
-export const heroImage = img('hero-road');
+// Valley → Ratangad Fort → snow peaks, crossfaded into one seamless loop.
+export const heroVideo = '/video/hero.mp4';
+export const heroPoster = '/video/hero-poster.jpg';
 
 export const featuredTrips = [
   {
