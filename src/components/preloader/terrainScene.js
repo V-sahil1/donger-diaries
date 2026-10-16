@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { fbm, hash, ridged, seeded, smoothstep, vnoise } from '../../lib/noise.js';
 
 /*
  * Three.js topographic map for the loader.
@@ -7,58 +10,6 @@ import * as THREE from 'three';
  * shadow faces, snow on the peaks. A jeep drives a route laid on the terrain.
  */
 
-// ---------- deterministic noise ------------------------------------------------
-const hash = (x, y) => {
-  const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-  return s - Math.floor(s);
-};
-const vnoise = (x, y) => {
-  const xi = Math.floor(x);
-  const yi = Math.floor(y);
-  const xf = x - xi;
-  const yf = y - yi;
-  const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10);
-  const v = yf * yf * yf * (yf * (yf * 6 - 15) + 10);
-  const a = hash(xi, yi);
-  const b = hash(xi + 1, yi);
-  const c = hash(xi, yi + 1);
-  const d = hash(xi + 1, yi + 1);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-};
-const fbm = (x, y, octaves = 5) => {
-  let sum = 0;
-  let amp = 0.5;
-  let freq = 1;
-  for (let i = 0; i < octaves; i += 1) {
-    sum += amp * vnoise(x * freq, y * freq);
-    freq *= 2.03;
-    amp *= 0.5;
-  }
-  return sum;
-};
-const ridged = (x, y, octaves = 6) => {
-  let sum = 0;
-  let amp = 0.5;
-  let freq = 1;
-  let weight = 1;
-  for (let i = 0; i < octaves; i += 1) {
-    let n = 1 - Math.abs(vnoise(x * freq, y * freq) * 2 - 1);
-    n *= n * weight;
-    weight = Math.min(1, n * 1.8);
-    sum += n * amp;
-    freq *= 2.1;
-    amp *= 0.5;
-  }
-  return sum;
-};
-const seeded = (seed) => () => {
-  seed = (seed * 16807) % 2147483647;
-  return (seed - 1) / 2147483646;
-};
-const smoothstep = (a, b, x) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 
 // ---------- shaders ----------------------------------------------------------
 const terrainVertex = /* glsl */ `
@@ -464,7 +415,7 @@ export function createTerrainScene(canvas) {
   const heightAt = (x, z) => sample(x, z).h;
 
   // ---------- terrain mesh ----------
-  const geo = new THREE.PlaneGeometry(36, 28, 460, 360);
+  const geo = new THREE.PlaneGeometry(36, 28, 320, 250); // ~80k verts: detailed enough, ~2x faster to build
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, 0, -4);
   const pos = geo.attributes.position;
@@ -640,38 +591,124 @@ export function createTerrainScene(canvas) {
   props.add(tracker);
 
   // ---------- jeep ----------
-  const ink = new THREE.MeshLambertMaterial({ color: 0x2b2d2c });
-  const glass = new THREE.MeshPhongMaterial({ color: 0xbfd3db, specular: 0xffffff, shininess: 80 });
+  // An off-roader in the brand's forest green: rounded body panels, slotted
+  // grille, round lamps, flared arches, treaded tyres and a soft contact shadow.
+  // Units are local (length along +z = forward), scaled to the map below.
+  const paint = new THREE.MeshPhongMaterial({ color: 0x1f4d36, specular: 0x6a7f72, shininess: 70 });
+  const trim = new THREE.MeshPhongMaterial({ color: 0x1a1b1b, specular: 0x222222, shininess: 12 });
+  const rubber = new THREE.MeshLambertMaterial({ color: 0x161616 });
+  const alloy = new THREE.MeshPhongMaterial({ color: 0x9ea3a6, specular: 0xffffff, shininess: 90 });
+  const glass = new THREE.MeshPhongMaterial({ color: 0x1d2a30, specular: 0xdde8ee, shininess: 120, transparent: true, opacity: 0.88 });
+  const lamp = new THREE.MeshBasicMaterial({ color: 0xfff3d1 });
+  const tailLamp = new THREE.MeshBasicMaterial({ color: 0xc62a1f });
+  const amber = new THREE.MeshBasicMaterial({ color: 0xf58220 });
+
   const jeep = new THREE.Group();
-  const box = (w, h, d, mat, x, y, z) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const part = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
+    mesh.rotation.set(rx, ry, rz);
     jeep.add(mesh);
     return mesh;
   };
-  box(0.36, 0.13, 0.62, ink, 0, 0.16, 0); // body (length along z)
-  box(0.34, 0.14, 0.34, ink, 0, 0.29, -0.08); // cabin
-  box(0.35, 0.08, 0.13, glass, 0, 0.3, 0.03); // windscreen band
-  box(0.352, 0.07, 0.24, glass, 0, 0.3, -0.12); // side windows
-  box(0.3, 0.02, 0.36, ink, 0, 0.39, -0.08); // roof rack
-  box(0.06, 0.04, 0.02, orange, 0.12, 0.17, 0.315); // headlights
-  box(0.06, 0.04, 0.02, orange, -0.12, 0.17, 0.315);
-  const spare = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.05, 16), ink);
-  spare.rotation.x = Math.PI / 2;
-  spare.position.set(0, 0.2, -0.34);
-  jeep.add(spare);
+  const rbox = (w, h, d, radius) => new RoundedBoxGeometry(w, h, d, 2, radius);
+  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+  // Body
+  part(box(0.24, 0.04, 0.56), trim, 0, 0.13, 0); // chassis rails
+  part(rbox(0.34, 0.14, 0.6, 0.025), paint, 0, 0.21, -0.01); // tub
+  part(rbox(0.33, 0.05, 0.25, 0.02), paint, 0, 0.29, 0.165, 0.06); // hood, sloping to the nose
+  part(rbox(0.33, 0.15, 0.2, 0.02), paint, 0, 0.355, -0.17); // hardtop rear
+  part(rbox(0.335, 0.03, 0.36, 0.012), paint, 0, 0.445, -0.09); // roof
+  part(box(0.31, 0.16, 0.012), glass, 0, 0.36, 0.06, -0.26); // windscreen, raked back
+  part(box(0.336, 0.1, 0.13), glass, 0, 0.365, -0.01); // door windows
+  part(box(0.336, 0.08, 0.12), glass, 0, 0.37, -0.17); // rear quarter windows
+  part(box(0.012, 0.16, 0.012), paint, 0.157, 0.36, 0.06, -0.26); // A-pillars
+  part(box(0.012, 0.16, 0.012), paint, -0.157, 0.36, 0.06, -0.26);
+  part(box(0.342, 0.004, 0.004), trim, 0, 0.215, 0.07); // door shut lines
+  part(box(0.342, 0.12, 0.004), trim, 0, 0.21, -0.075);
+
+  // Nose: body-coloured grille with dark slots, round headlamps, amber indicators
+  part(rbox(0.3, 0.11, 0.02, 0.008), paint, 0, 0.225, 0.29);
+  for (let i = -3; i <= 3; i += 1) part(box(0.018, 0.075, 0.01), trim, i * 0.03, 0.225, 0.3);
+  [-1, 1].forEach((s) => {
+    part(new THREE.CylinderGeometry(0.036, 0.036, 0.012, 20), trim, s * 0.135, 0.23, 0.299, Math.PI / 2);
+    part(new THREE.CylinderGeometry(0.028, 0.028, 0.012, 20), lamp, s * 0.135, 0.23, 0.302, Math.PI / 2);
+    part(box(0.03, 0.014, 0.01), amber, s * 0.135, 0.185, 0.3);
+    part(box(0.028, 0.06, 0.01), tailLamp, s * 0.15, 0.225, -0.311); // tail lamps
+    part(box(0.012, 0.03, 0.03), trim, s * 0.19, 0.335, 0.05); // mirror stalk
+    part(rbox(0.01, 0.035, 0.05, 0.004), trim, s * 0.2, 0.355, 0.05); // mirror
+    part(box(0.03, 0.015, 0.2), trim, s * 0.185, 0.135, 0); // side steps
+  });
+
+  // Bumpers, snorkel, roof rack with a light bar
+  part(rbox(0.4, 0.05, 0.05, 0.01), trim, 0, 0.14, 0.315);
+  part(rbox(0.38, 0.05, 0.04, 0.01), trim, 0, 0.14, -0.315);
+  part(new THREE.CylinderGeometry(0.011, 0.011, 0.22, 10), trim, 0.18, 0.36, 0.09, -0.22);
+  part(box(0.04, 0.02, 0.04), trim, 0.18, 0.47, 0.115);
+  [-0.13, 0.13].forEach((x) => part(box(0.015, 0.015, 0.34), trim, x, 0.472, -0.09));
+  [-0.22, -0.09, 0.04].forEach((z) => part(box(0.27, 0.01, 0.012), trim, 0, 0.476, z));
+  part(rbox(0.22, 0.025, 0.02, 0.006), trim, 0, 0.48, 0.075);
+  for (let i = -3; i <= 3; i += 1) part(box(0.022, 0.012, 0.004), lamp, i * 0.028, 0.48, 0.086);
+
+  // Tyres: rounded rubber with chunky tread blocks, five-spoke alloys
+  const tyreProfile = [
+    [0.064, -0.04], [0.088, -0.043], [0.099, -0.033], [0.102, 0], [0.099, 0.033], [0.088, 0.043], [0.064, 0.04],
+  ].map(([x, y]) => new THREE.Vector2(x, y));
+  const treads = [];
+  for (let i = 0; i < 18; i += 1) {
+    const a = (i / 18) * Math.PI * 2;
+    // Lathe axis is y here; blocks sit on the rim, staggered in two rows.
+    [-0.019, 0.019].forEach((off, k) => {
+      const t = new THREE.BoxGeometry(0.014, 0.03, 0.022);
+      t.translate(0.102, off, 0);
+      t.rotateY(a + (k ? Math.PI / 18 : 0));
+      treads.push(t);
+    });
+  }
+  const tyreGeo = mergeGeometries([new THREE.LatheGeometry(tyreProfile, 28), ...treads]);
+  tyreGeo.rotateZ(Math.PI / 2); // axle along x
+  const spokes = [new THREE.CylinderGeometry(0.064, 0.064, 0.06, 24).rotateZ(Math.PI / 2)];
+  for (let i = 0; i < 5; i += 1) spokes.push(new THREE.BoxGeometry(0.068, 0.11, 0.016).rotateX((i / 5) * Math.PI));
+  const rimGeo = mergeGeometries(spokes.map((g) => g.toNonIndexed()));
+  const hubGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.072, 12).rotateZ(Math.PI / 2);
+
+  const makeTyre = () => {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(tyreGeo, rubber), new THREE.Mesh(rimGeo, alloy), new THREE.Mesh(hubGeo, trim));
+    return g;
+  };
   const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.07, 18);
-  wheelGeo.rotateZ(Math.PI / 2);
-  const hubGeo = new THREE.BoxGeometry(0.075, 0.12, 0.03);
-  [[-0.19, 0.2], [0.19, 0.2], [-0.19, -0.2], [0.19, -0.2]].forEach(([x, z]) => {
-    const wheel = new THREE.Group();
-    wheel.add(new THREE.Mesh(wheelGeo, ink));
-    wheel.add(new THREE.Mesh(hubGeo, glass));
-    wheel.position.set(x, 0.09, z);
+  [[-0.178, 0.2], [0.178, 0.2], [-0.178, -0.2], [0.178, -0.2]].forEach(([x, z]) => {
+    const wheel = makeTyre();
+    wheel.position.set(x, 0.102, z);
     jeep.add(wheel);
     wheels.push(wheel);
+    // Flared wheel arch hugging the top of the tyre
+    part(new THREE.TorusGeometry(0.118, 0.02, 8, 20, Math.PI), trim, x + Math.sign(x) * 0.005, 0.11, z, 0, Math.PI / 2).scale.set(1, 1, 1.4);
   });
+  const spare = makeTyre();
+  spare.rotation.y = Math.PI / 2;
+  spare.position.set(0, 0.25, -0.36);
+  jeep.add(spare);
+
+  // Soft contact shadow so the jeep sits on the map instead of floating
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = shadowCanvas.height = 64;
+  const sctx = shadowCanvas.getContext('2d');
+  const grad = sctx.createRadialGradient(32, 32, 4, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  sctx.fillStyle = grad;
+  sctx.fillRect(0, 0, 64, 64);
+  const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+  const shadow = part(
+    new THREE.PlaneGeometry(0.62, 0.9),
+    new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }),
+    0, -0.02, 0, -Math.PI / 2
+  );
+  shadow.renderOrder = -1;
+
   jeep.scale.setScalar(r * 0.42);
   props.add(jeep);
 

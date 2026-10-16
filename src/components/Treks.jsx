@@ -32,7 +32,7 @@ export default function Treks() {
             <Item key={t.title} className="reveal-cell">
             <article className="card trek-card lift">
               <div className="card__media media-zoom">
-                <img src={t.image} alt={t.alt} loading="lazy" />
+                <img src={t.image} alt={t.alt} loading="lazy" data-parallax="7" />
                 <span className="chip chip--green card__altitude">{t.altitude}</span>
               </div>
               <div className="card__body">

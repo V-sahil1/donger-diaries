@@ -1,19 +1,89 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { heroPoster, heroVideo } from '../data/content.js';
 import { gsap } from '../lib/gsap.js';
 import { useTheme } from '../theme/ThemeContext.jsx';
 import Icon from './Icon.jsx';
 
-function HeroCopy() {
+// Second headline line cycles through these, typewriter style.
+const TYPED_PHRASES = [
+  { accent: 'is our', word: 'Story.' },
+  { accent: 'makes', word: 'Memories.' },
+  { accent: 'leaves', word: 'Tyre Marks.' },
+  { accent: 'is our', word: 'Therapy.' },
+  { accent: 'fills our', word: 'Diaries.' },
+  { accent: 'burns', word: 'Rubber.' },
+];
+
+const TYPE_MS = 85;
+const DELETE_MS = 40;
+const HOLD_MS = 2200;
+const GAP_MS = 350;
+// Let the GSAP intro finish revealing the first phrase before typing starts.
+const START_DELAY_MS = 2200;
+
+// The accent and the bold word are typed as one string with a space between.
+const phraseLength = ({ accent, word }) => accent.length + 1 + word.length;
+
+function Typewriter({ ready }) {
+  const [index, setIndex] = useState(0);
+  const [count, setCount] = useState(() => phraseLength(TYPED_PHRASES[0]));
+  const [deleting, setDeleting] = useState(false);
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    if (!ready) return undefined;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const t = setTimeout(() => setStarted(true), START_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [ready]);
+
+  useEffect(() => {
+    if (!started) return undefined;
+    const full = phraseLength(TYPED_PHRASES[index]);
+    let delay;
+    let step;
+    if (!deleting && count === full) {
+      delay = HOLD_MS;
+      step = () => setDeleting(true);
+    } else if (deleting && count === 0) {
+      delay = GAP_MS;
+      step = () => {
+        setDeleting(false);
+        setIndex((i) => (i + 1) % TYPED_PHRASES.length);
+      };
+    } else {
+      delay = deleting ? DELETE_MS : TYPE_MS;
+      step = () => setCount((c) => c + (deleting ? -1 : 1));
+    }
+    const t = setTimeout(step, delay);
+    return () => clearTimeout(t);
+  }, [started, index, count, deleting]);
+
+  const { accent, word } = TYPED_PHRASES[index];
+  const accentShown = accent.slice(0, count);
+  const wordShown = word.slice(0, Math.max(0, count - accent.length - 1));
+
+  return (
+    <span className="typewriter" aria-hidden="true">
+      {accentShown && <em className="accent-italic tone-accent">{accentShown}</em>}
+      {count > accent.length && ' '}
+      {wordShown}
+      <span className={`typewriter__caret${started ? '' : ' is-idle'}`} />
+    </span>
+  );
+}
+
+function HeroCopy({ ready }) {
   return (
     <>
-      <h1 className="hero__title">
-        <span className="hero__line">
+      {/* Screen readers get the stable headline, not every keystroke. */}
+      <h1 className="hero__title" aria-label="The Road is our Story.">
+        <span className="hero__line" aria-hidden="true">
           <span className="hero__line-inner">The Road</span>
         </span>
-        <span className="hero__line">
+        <span className="hero__line hero__line--typed">
           <span className="hero__line-inner">
-            <em className="accent-italic tone-accent">is our</em> Story.
+            <Typewriter ready={ready} />
           </span>
         </span>
       </h1>
@@ -97,13 +167,15 @@ export default function Hero({ ready }) {
     const ctx = gsap.context(() => {
       gsap
         .timeline({ defaults: { ease: 'power4.out' } })
-        .fromTo('.hero__bg', { scale: 1.3 }, { scale: 1.05, duration: 2.4, ease: 'power2.out' }, 0)
+        // Zoom kept small: the footage is upscaled to fill the screen, and every
+        // extra % of scale softens it further.
+        .fromTo('.hero__bg', { scale: 1.12 }, { scale: 1.02, duration: 2.4, ease: 'power2.out' }, 0)
         .from('.hero__line-inner', { yPercent: 115, rotate: 2, stagger: 0.14, duration: 1.2 }, 0.45)
         .from('.hero__lede', { y: 24, opacity: 0, duration: 0.9 }, 0.9)
         .from('.hero__actions .btn', { y: 22, opacity: 0, stagger: 0.1, duration: 0.8 }, 1.05)
         .from('.hero__ticker-bar', { yPercent: 100, opacity: 0, duration: 0.9 }, 1.1)
         // Slow camera drift on top of the footage, forever.
-        .to('.hero__bg', { scale: 1.14, xPercent: -2, duration: 16, ease: 'sine.inOut', yoyo: true, repeat: -1 }, 2.4);
+        .to('.hero__bg', { scale: 1.05, xPercent: -1.5, duration: 16, ease: 'sine.inOut', yoyo: true, repeat: -1 }, 2.4);
     }, root);
     return () => ctx.revert();
   }, [ready]);
@@ -141,7 +213,7 @@ export default function Hero({ ready }) {
       <div className="hero__scrim" />
 
       <div className="container hero__content">
-        <HeroCopy />
+        <HeroCopy ready={ready} />
       </div>
 
       <div className="hero__ticker-bar">

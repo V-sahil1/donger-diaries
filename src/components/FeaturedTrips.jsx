@@ -8,7 +8,7 @@ function TripCard({ trip }) {
   return (
     <article className={`card trip-card trip-card--${trip.size || 'regular'} lift`}>
       <div className="card__media media-zoom">
-        <img src={trip.image} alt={trip.alt} loading="lazy" />
+        <img src={trip.image} alt={trip.alt} loading="lazy" data-parallax="6" />
         <div className="card__badges">
           {trip.badges.map((b) => (
             <span key={b.label} className={`chip chip--${b.tone || 'plain'}`}>

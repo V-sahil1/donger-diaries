@@ -24,7 +24,12 @@ export default function CallToAction() {
             show: { opacity: 1, y: 0, scale: 1, transition: { duration: 1, ease: [0.2, 0.7, 0.2, 1] } },
           }}
         >
-          <div className="cta__bg" style={{ backgroundImage: `url(${ctaImage})` }} aria-hidden="true" />
+          <div
+            className="cta__bg"
+            style={{ backgroundImage: `url(${ctaImage})` }}
+            data-parallax="8"
+            aria-hidden="true"
+          />
           <div className="cta__scrim" aria-hidden="true" />
           <div className="cta__content">
             <span className="round-icon tone-accent">

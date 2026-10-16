@@ -87,6 +87,7 @@ export default function Manifesto() {
               src={manifesto.mainImage}
               alt="Group of adventurers sharing tea beside an overland SUV on a mountain pass"
               loading="lazy"
+              data-parallax="6"
             />
             <figcaption className="collage__caption">
               <span className="label tone-green">Pass Transit • 4,900m</span>
@@ -97,6 +98,7 @@ export default function Manifesto() {
           </motion.figure>
           <motion.figure
             className="collage__secondary"
+            data-parallax="-22"
             initial={{ opacity: 0, y: 80, rotate: -6 }}
             whileInView={{ opacity: 1, y: 0, rotate: 0 }}
             viewport={inView}
@@ -110,6 +112,7 @@ export default function Manifesto() {
           </motion.figure>
           <motion.span
             className="pill pill--float collage__badge"
+            data-parallax="-80"
             initial={{ opacity: 0, scale: 0.5 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={inView}

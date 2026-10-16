@@ -27,6 +27,15 @@ function PinIcon({ color = '#087A35' }) {
   );
 }
 
+// Crossbar-less "A" drawn as a mountain peak for the wordmark.
+function PeakA() {
+  return (
+    <svg className="pl-peak" viewBox="0 0 80 70" aria-hidden="true">
+      <path d="M0 70 L40 0 L80 70 H61 L40 32 L19 70 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 /**
  * Topographic-map loader shown on every load/refresh. A Three.js terrain rises
  * out of the paper, a jeep drives the route as assets load, map pins drop as it
@@ -63,7 +72,26 @@ export default function Preloader({ onReveal, onDone }) {
       loaded = total;
     }, MAX_DURATION);
 
-    const map = createTerrainScene(canvasRef.current);
+    // The terrain is heavy to build, so it is created after the first frame has
+    // painted: the brand intro starts instantly instead of waiting on it.
+    let map = null;
+    let buildFrame = requestAnimationFrame(() => {
+      buildFrame = requestAnimationFrame(() => {
+        map = createTerrainScene(canvasRef.current);
+        if (!map) return;
+        map.update(0, 0, false); // compile shaders now rather than mid-intro
+        ctx.add(() => {
+          gsap
+            .timeline()
+            .to(map.state, { dolly: 1, duration: 2.4, ease: 'power3.inOut' }, 0)
+            .to(map.state, { rise: 1, duration: 2, ease: 'power2.inOut' }, 0.1)
+            .to(map.state, { reveal: 1, duration: 1.5, ease: 'power1.inOut' }, 0.15)
+            .to(map.state, { props: 1, duration: 0.6 }, 1.3)
+            .to(map.state, { trail: 1, duration: 1.4, ease: 'power1.inOut' }, 1.5)
+            .to('.pl-markers', { autoAlpha: 1, duration: 0.4 }, 0.2);
+        });
+      });
+    });
 
     // HTML pins that follow their 3D positions on the map.
     const pinEls = {
@@ -89,25 +117,19 @@ export default function Preloader({ onReveal, onDone }) {
     let progressTl;
     const ctx = gsap.context(() => {
       gsap.set('.pl-pin3d--route .pl-pin-icon', { scale: 0 });
+      gsap.set('.pl-markers', { autoAlpha: 0 }); // shown once the map exists
 
-      const intro = gsap.timeline({ defaults: { ease: 'power3.out' } });
-      if (map) {
-        intro
-          .to(map.state, { dolly: 1, duration: 2.6, ease: 'power3.inOut' }, 0)
-          .to(map.state, { rise: 1, duration: 2.2, ease: 'power2.inOut' }, 0.2)
-          .to(map.state, { reveal: 1, duration: 1.6, ease: 'power1.inOut' }, 0.3)
-          .to(map.state, { props: 1, duration: 0.6 }, 1.6)
-          .to(map.state, { trail: 1, duration: 1.4, ease: 'power1.inOut' }, 1.8);
-      }
-      intro
-        .from('.pl-pin3d--trail .pl-pin-icon', { scale: 0, y: -16, stagger: 0.3, duration: 0.6, ease: 'back.out(3)' }, 2.4)
-        .from('.pl-pin3d--dest .pl-pin-icon', { scale: 0, y: -20, duration: 0.7, ease: 'back.out(3)' }, 1.9)
-        .fromTo('.pl-ring', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.inOut' }, 0.2)
-        .from('.pl-emblem-logo', { scale: 0.6, opacity: 0, duration: 0.8, ease: 'back.out(1.8)' }, 0.55)
-        .from('.pl-char', { yPercent: 110, opacity: 0, stagger: 0.04, duration: 0.7 }, 0.8)
-        .from('.pl-tagline', { y: 12, opacity: 0, duration: 0.7 }, 1.35)
-        .from('.pl-hud, .pl-skip, .pl-compass', { opacity: 0, y: 10, stagger: 0.08, duration: 0.6 }, 1.2)
-        .from('.pl-bubble-inner', { opacity: 0, y: 10, duration: 0.6 }, 2.2);
+      // Brand intro starts on the very first frame.
+      gsap
+        .timeline({ defaults: { ease: 'power3.out' } })
+        .fromTo('.pl-ring', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.1, ease: 'power2.inOut' }, 0)
+        .from('.pl-emblem-logo', { scale: 0.7, opacity: 0, duration: 0.7, ease: 'back.out(1.6)' }, 0.05)
+        .from('.pl-char', { yPercent: 110, opacity: 0, stagger: 0.035, duration: 0.65 }, 0.2)
+        .from('.pl-tagline', { y: 12, opacity: 0, duration: 0.6 }, 0.6)
+        .from('.pl-hud, .pl-skip, .pl-compass', { opacity: 0, y: 10, stagger: 0.08, duration: 0.6 }, 0.5)
+        .from('.pl-pin3d--dest .pl-pin-icon', { scale: 0, y: -20, duration: 0.7, ease: 'back.out(3)' }, 1.6)
+        .from('.pl-pin3d--trail .pl-pin-icon', { scale: 0, y: -16, stagger: 0.3, duration: 0.6, ease: 'back.out(3)' }, 2)
+        .from('.pl-bubble-inner', { opacity: 0, y: 10, duration: 0.6 }, 1.9);
 
       progressTl = gsap
         .timeline({ paused: true, defaults: { ease: 'none', duration: 1 } })
@@ -197,6 +219,7 @@ export default function Preloader({ onReveal, onDone }) {
 
     return () => {
       gsap.ticker.remove(tick);
+      cancelAnimationFrame(buildFrame);
       clearTimeout(failSafe);
       ctx.revert();
       map?.dispose();
@@ -262,14 +285,27 @@ export default function Preloader({ onReveal, onDone }) {
           </div>
         </div>
         <p className="pl-title" aria-label="Dongar Diaries">
-          {'DONGAR DIARIES'.split('').map((ch, i) => (
-            <span key={i} className={`pl-char${i === 5 ? ' is-green' : ''}`} aria-hidden="true">
-              {ch === ' ' ? ' ' : ch}
-            </span>
-          ))}
-        </p>
-        <p className="pl-tagline">
-          Find your <span>own</span> way.
+          <span className="pl-word pl-word--main" aria-hidden="true">
+            {'DONGAR'.split('').map((ch, i) => (
+              <span key={i} className="pl-char">
+                {ch === 'A' ? <PeakA /> : ch}
+              </span>
+            ))}
+          </span>
+          <span className="pl-word pl-word--sub" aria-hidden="true">
+            {'DIARIES'.split('').map((ch, i) => (
+              <span key={i} className="pl-char">
+                {ch}
+              </span>
+            ))}
+          </span>
+          <span className="pl-tagline">
+            <span>Track</span>
+            <i aria-hidden="true">•</i>
+            <span>Analyze</span>
+            <i aria-hidden="true">•</i>
+            <span>Explore</span>
+          </span>
         </p>
       </div>
 
