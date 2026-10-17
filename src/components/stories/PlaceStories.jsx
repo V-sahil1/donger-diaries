@@ -17,7 +17,25 @@ function PlaceStory({ place, index, total, onOpen }) {
   return (
     <article id={`story-${place.slug}`} className={`story${flip ? ' story--flip' : ''}`}>
       <div className="story__marquee" aria-hidden="true">
-        <span>{name}</span>
+        <span className="story__marquee-drift">
+          {/* two identical halves, so the loop wraps seamlessly at -50% */}
+          <span className="story__marquee-loop">
+            {[0, 1].map((half) => (
+              <span key={half} className="story__marquee-half">
+                {[0, 1].map((k) => (
+                  <span key={k} className="story__marquee-set">
+                    <span className="story__marquee-word">{name}</span>
+                    <Icon name="filter_hdr" className="story__marquee-sep" />
+                    <span className="story__marquee-word story__marquee-word--solid">
+                      {tagline.replace(/\.$/, '')}
+                    </span>
+                    <Icon name="filter_hdr" className="story__marquee-sep" />
+                  </span>
+                ))}
+              </span>
+            ))}
+          </span>
+        </span>
       </div>
 
       <div className="container story__grid">
@@ -136,9 +154,9 @@ export default function PlaceStories() {
               .fromTo(q('.story__cover img'), { scale: 1.35 }, { scale: 1, duration: 1, ease: 'power1.out' }, '<')
               // the place name drifts behind the chapter like a passing road sign
               .fromTo(
-                q('.story__marquee span'),
-                { xPercent: flip ? -30 : 5 },
-                { xPercent: flip ? 5 : -30, duration: 2.2 },
+                q('.story__marquee-drift'),
+                { x: () => window.innerWidth * (flip ? -0.3 : 0) },
+                { x: () => window.innerWidth * (flip ? 0 : -0.3), duration: 2.2 },
                 '<'
               )
               .addLabel(`story${i}`, '<+=1')
@@ -190,12 +208,18 @@ export default function PlaceStories() {
           if (reduce) return;
 
           gsap.fromTo(
-            q('.story__marquee span'),
-            { xPercent: flip ? -30 : 5 },
+            q('.story__marquee-drift'),
+            { x: () => window.innerWidth * (flip ? -0.3 : 0) },
             {
-              xPercent: flip ? 5 : -30,
+              x: () => window.innerWidth * (flip ? 0 : -0.3),
               ease: 'none',
-              scrollTrigger: { trigger: el, start: 'top bottom', end: 'bottom top', scrub: true },
+              scrollTrigger: {
+                trigger: el,
+                start: 'top bottom',
+                end: 'bottom top',
+                scrub: true,
+                invalidateOnRefresh: true,
+              },
             }
           );
           const arrive = { trigger: el, start: 'top 85%', end: 'top 20%', scrub: true };

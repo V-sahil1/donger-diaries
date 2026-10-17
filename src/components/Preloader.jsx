@@ -77,7 +77,12 @@ export default function Preloader({ onReveal, onDone }) {
     let map = null;
     let buildFrame = requestAnimationFrame(() => {
       buildFrame = requestAnimationFrame(() => {
-        map = createTerrainScene(canvasRef.current);
+        try {
+          map = createTerrainScene(canvasRef.current);
+        } catch (err) {
+          console.error('Preloader map failed to build', err); // loader still runs without it
+          map = null;
+        }
         if (!map) return;
         map.update(0, 0, false); // compile shaders now rather than mid-intro
         ctx.add(() => {

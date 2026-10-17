@@ -114,7 +114,8 @@ ${NOISE_GLSL}
 
   void main() {
     vec2 uv = vPos.xz / uScale;
-    float m = smoothstep(0.15, 0.75, vMassif);
+    // tight blend so the ranges have crisp feet instead of a foggy halo
+    float m = smoothstep(0.04, 0.32, vMassif);
     vec3 n = normalize(vNormal);
     vec3 V = normalize(cameraPosition - vPos);
     vec3 L = normalize(uLight);
@@ -122,11 +123,17 @@ ${NOISE_GLSL}
 
     // Only shade the mountains; open paper skips all the texture work.
     if (m > 0.002) {
-      float slope = 1.0 - n.y;
-      float alt = clamp(vPos.y / uMaxH, 0.0, 1.0);
       float nBroad = fbm(uv * 2.4) * 0.5 + 0.5;
       float nFine = fbm(uv * 8.0) * 0.5 + 0.5;
       float crevice = ridge(uv * 3.6);
+      float grit = ridge(uv * 9.0);
+
+      // Per-pixel rock relief: gullies and cracks the mesh is too coarse to carry.
+      float bump = (crevice * 0.65 + nFine * 0.2 + grit * 0.15) * uScale * 0.028 * m;
+      n = perturbNormal(vPos, n, bump);
+
+      float slope = 1.0 - n.y;
+      float alt = clamp(vPos.y / uMaxH, 0.0, 1.0);
 
       // Rock: warm grey granite with soft cracks and faint strata.
       vec3 rock = mix(vec3(0.42, 0.39, 0.36), vec3(0.62, 0.58, 0.52), nBroad);
@@ -153,10 +160,10 @@ ${NOISE_GLSL}
       // Soft wrapped sunlight, cool sky fill, gentle shading in hollows.
       float diff = clamp((dot(n, L) + 0.3) / 1.3, 0.0, 1.0);
       diff = diff * diff * (3.0 - 2.0 * diff);
-      vec3 sunCol = vec3(1.0, 0.93, 0.84) * 1.05;
-      vec3 sky = mix(vec3(0.5, 0.47, 0.43), vec3(0.74, 0.81, 0.92), n.y * 0.5 + 0.5);
-      float ao = mix(0.68, 1.0, smoothstep(0.0, 0.32, alt)) * (0.85 + 0.15 * (1.0 - crevice));
-      vec3 lit = albedo * (sunCol * diff + sky * 0.55 * ao);
+      vec3 sunCol = vec3(1.0, 0.93, 0.84) * 1.18;
+      vec3 sky = mix(vec3(0.46, 0.43, 0.4), vec3(0.72, 0.8, 0.93), n.y * 0.5 + 0.5);
+      float ao = mix(0.62, 1.0, smoothstep(0.0, 0.32, alt)) * (0.78 + 0.22 * (1.0 - crevice));
+      vec3 lit = albedo * (sunCol * diff + sky * 0.42 * ao);
       lit = mix(lit, lit * vec3(0.88, 0.93, 1.06), snow * (1.0 - diff));
       vec3 H = normalize(L + V);
       lit += snow * pow(max(dot(n, H), 0.0), 32.0) * 0.15;
@@ -294,12 +301,12 @@ const sunFragment = /* glsl */ `
 // `tl` / `br` are the foot of each range; the peaks rise above them on screen.
 const LAYOUTS = {
   wide: {
-    tl: [-0.66, 0.36],
-    br: [0.8, -0.52],
-    lake: [0.74, -0.86],
+    tl: [-0.6, 0.32],
+    br: [0.77, -0.5],
+    lake: [0.72, -0.86],
     route: [[0.04, -1.25], [0.16, -0.98], [0.3, -0.92], [0.42, -0.8], [0.5, -0.66], [0.56, -0.52], [0.62, -0.4]],
-    trail: [[-0.52, 0.26], [-0.56, 0.14], [-0.66, 0.06], [-0.76, -0.02], [-0.86, -0.08]],
-    size: 0.12,
+    trail: [[-0.46, 0.22], [-0.5, 0.1], [-0.6, 0.02], [-0.72, -0.06], [-0.84, -0.12]],
+    size: 0.13,
   },
   tall: {
     tl: [-0.5, 0.56],
@@ -341,7 +348,7 @@ export function createTerrainScene(canvas) {
   } catch {
     return null; // no WebGL — the loader still works without the map
   }
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
   renderer.setPixelRatio(pixelRatio);
   renderer.setClearColor(0xffffff, 1);
 
@@ -415,7 +422,8 @@ export function createTerrainScene(canvas) {
   const heightAt = (x, z) => sample(x, z).h;
 
   // ---------- terrain mesh ----------
-  const geo = new THREE.PlaneGeometry(36, 28, 320, 250); // ~80k verts: detailed enough, ~2x faster to build
+  // ~170k verts: enough for sharp ridgelines (the shader adds the fine rock detail)
+  const geo = new THREE.PlaneGeometry(36, 28, 470, 366);
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, 0, -4);
   const pos = geo.attributes.position;

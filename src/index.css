@@ -266,7 +266,6 @@ input {
 
 .container {
   width: 100%;
-  max-width: calc(1440px + 10rem);
   margin-inline: auto;
   padding-inline: 1.25rem;
 }
@@ -1542,12 +1541,11 @@ main {
 /* Dark: cinematic full-bleed */
 .hero--cinematic {
   margin-top: -5rem;
-  min-height: clamp(42rem, 100svh, 62rem);
+  min-height: max(42rem, 100svh);
   display: flex;
   flex-direction: column;
   background: var(--bg-alt);
-}
-.hero__bg {
+}.hero__bg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -2658,18 +2656,57 @@ img[data-parallax],
   z-index: 0;
   white-space: nowrap;
   pointer-events: none;
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: clamp(4.5rem, 15vw, 14rem);
-  line-height: 1;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(4rem, 12vw, 11rem);
+  line-height: 1.1;
   text-transform: uppercase;
+  --marquee-ink: #1f4d36;
+}
+.story__marquee-drift {
+  display: inline-block;
+  will-change: transform;
+}
+/* endless ribbon on top of the scroll drift; alternate chapters flow opposite ways */
+.story__marquee-loop {
+  display: inline-flex;
+  animation: story-marquee 60s linear infinite;
+}
+.story--flip .story__marquee-loop {
+  animation-direction: reverse;
+}
+.story__marquee-half,
+.story__marquee-set {
+  display: inline-flex;
+  align-items: center;
+}
+.story__marquee-word {
+  padding-inline: 0.12em; /* room for the italic overhang */
   color: transparent;
-  -webkit-text-stroke: 1px var(--border-strong);
+  -webkit-text-stroke: 1.2px var(--marquee-ink);
+  opacity: 0.7;
+}
+.story__marquee-word--solid {
+  color: var(--marquee-ink);
+  -webkit-text-stroke: 0;
+  opacity: 0.16;
+}
+.story__marquee .story__marquee-sep {
+  font-size: 0.32em;
+  margin-inline: 0.55em;
+  color: var(--accent);
   opacity: 0.8;
 }
-.story--flip .story__marquee {
-  left: auto;
-  right: 0;
+@keyframes story-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story__marquee-loop { animation: none; }
+}
+:root[data-theme='dark'] .story__marquee {
+  --marquee-ink: #a1d2b2;
 }
 .story__grid {
   position: relative;

@@ -3,27 +3,27 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { journey } from '../../data/content.js';
 import { ScrollTrigger } from '../../lib/gsap.js';
 import Icon from '../Icon.jsx';
-import { createJourneyScene, routeAt, WAYPOINTS } from './journeyScene.js';
 
-const { chapters } = journey;
+const { chapters, media } = journey;
+// Each chapter owns a quarter of the scroll; its pin sits near the end of it,
+// so the odometer "arrives" at the place just before the next region starts.
+const SPAN = 1 / chapters.length;
+const PINS = chapters.map((_, i) => i * SPAN + SPAN * 0.72);
 // Odometer / altimeter readings at the start and at each map pin.
-const STOPS = [
-  { u: routeAt(0), ...journey.start },
-  ...chapters.map((c, i) => ({ u: WAYPOINTS[i], altitude: c.altitude, km: c.km })),
-];
-// Region changes on the map (the terrain shader blends biomes at these points).
-const BOUNDS = [0.25, 0.5, 0.75];
-// Without WebGL there is no camera, so approximate its map position from the route.
-const approxBiome = (p) => routeAt(p) * 0.95;
-// Pin positions expressed as scroll progress, for the dots on the track.
-const PIN_PROGRESS = WAYPOINTS.map((u) => (u - routeAt(0)) / (routeAt(1) - routeAt(0)));
+const STOPS = [{ p: 0, ...journey.start }, ...chapters.map((c, i) => ({ p: PINS[i], altitude: c.altitude, km: c.km }))];
+const FADE = 0.035; // half-width of a crossfade between shots, in scroll progress
 
-const readingAt = (u, key) => {
-  if (u <= STOPS[0].u) return STOPS[0][key];
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const smoothstep = (a, b, v) => {
+  const t = clamp01((v - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+
+const readingAt = (p, key) => {
   for (let i = 1; i < STOPS.length; i += 1) {
     const a = STOPS[i - 1];
     const b = STOPS[i];
-    if (u <= b.u) return a[key] + ((b[key] - a[key]) * (u - a.u)) / (b.u - a.u);
+    if (p <= b.p) return a[key] + ((b[key] - a[key]) * (p - a.p)) / (b.p - a.p);
   }
   return STOPS[STOPS.length - 1][key];
 };
@@ -32,13 +32,14 @@ const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const ease = [0.2, 0.7, 0.2, 1];
 
 /**
- * "The Route": a pinned, scroll-scrubbed Three.js flight from the Sahyadri
- * ghats to Khardung La, with chapter cards, a live altimeter/odometer and a
- * waypoint track overlaid on the canvas.
+ * "The Route": a pinned, scroll-scrubbed flight from the Sahyadri ghats to
+ * Khardung La over real footage — each region's shot pushes in like a drone
+ * and crossfades into the next — with chapter cards, a live
+ * altimeter/odometer and a waypoint track on top.
  */
 export default function Journey() {
   const sectionRef = useRef(null);
-  const canvasRef = useRef(null);
+  const layersRef = useRef([]);
   const introRef = useRef(null);
   const hudRef = useRef(null);
   const altRef = useRef(null);
@@ -49,30 +50,39 @@ export default function Journey() {
 
   useLayoutEffect(() => {
     const section = sectionRef.current;
+    const layers = layersRef.current;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // Direct DOM writes: this runs every animation frame during the flight.
-    const update = (p, biome = approxBiome(p)) => {
-      const u = routeAt(p);
-      altRef.current.textContent = fmt(readingAt(u, 'altitude'));
-      kmRef.current.textContent = fmt(readingAt(u, 'km'));
+    // Direct DOM writes: this runs on every scroll tick during the flight.
+    const update = (p) => {
+      media.forEach((m, i) => {
+        const el = layers[i];
+        const end = media[i + 1]?.at ?? 1;
+        // later shots stack on top, so each only needs to fade itself in
+        const opacity = i === 0 ? 1 : smoothstep(m.at - FADE, m.at + FADE, p);
+        const covered = i < media.length - 1 && p > media[i + 1].at + FADE;
+        el.style.opacity = opacity;
+        el.style.visibility = opacity > 0 && !covered ? 'visible' : 'hidden';
+        if (reduceMotion) return;
+        // slow drone push-in with a sideways drift that alternates per shot
+        const t = clamp01((p - (m.at - FADE)) / (end - m.at + FADE * 2));
+        const dir = i % 2 ? -1 : 1;
+        el.style.transform = `translate3d(${dir * (t - 0.5) * 3}%, ${(0.5 - t) * 1.5}%, 0) scale(${1.08 + t * 0.14})`;
+      });
+
+      altRef.current.textContent = fmt(readingAt(p, 'altitude'));
+      kmRef.current.textContent = fmt(readingAt(p, 'km'));
       fillRef.current.style.transform = `scaleX(${p})`;
       const intro = Math.max(0, 1 - p / 0.06);
       introRef.current.style.opacity = intro;
       introRef.current.style.transform = `translateY(${(1 - intro) * -40}px)`;
       hudRef.current.classList.toggle('is-live', p > 0.04);
-      const next = BOUNDS.filter((b) => biome > b).length;
+      const next = Math.min(chapters.length - 1, Math.floor(p / SPAN));
       if (next !== chapterRef.current) {
         chapterRef.current = next;
         setChapter(next);
       }
     };
-
-    let scene = null;
-    try {
-      scene = createJourneyScene(canvasRef.current, { onFrame: update });
-    } catch {
-      section.classList.add('journey--static'); // no WebGL: photo backdrop, HUD still works
-    }
     update(0);
 
     const trigger = ScrollTrigger.create({
@@ -82,12 +92,19 @@ export default function Journey() {
       pin: true,
       anticipatePin: 1,
       invalidateOnRefresh: true,
-      onUpdate: (self) => (scene ? scene.setProgress(self.progress) : update(self.progress)),
+      onUpdate: (self) => update(self.progress),
     });
+
+    // only play the footage while the section is on screen
+    const videos = section.querySelectorAll('video');
+    const io = new IntersectionObserver(([entry]) => {
+      videos.forEach((v) => (entry.isIntersecting ? v.play().catch(() => {}) : v.pause()));
+    });
+    io.observe(section);
 
     return () => {
       trigger.kill();
-      scene?.dispose();
+      io.disconnect();
     };
   }, []);
 
@@ -95,7 +112,32 @@ export default function Journey() {
 
   return (
     <section ref={sectionRef} id="the-route" className="journey" aria-label="The route from the Sahyadri to Ladakh">
-      <canvas ref={canvasRef} className="journey__canvas" aria-hidden="true" />
+      <div className="journey__media" aria-hidden="true">
+        {media.map((m, i) =>
+          m.video ? (
+            <video
+              key={m.video}
+              ref={(el) => (layersRef.current[i] = el)}
+              className="journey__layer"
+              src={m.video}
+              poster={m.poster}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            <img
+              key={m.image}
+              ref={(el) => (layersRef.current[i] = el)}
+              className="journey__layer"
+              src={m.image}
+              alt=""
+              decoding="async"
+            />
+          )
+        )}
+      </div>
       <div className="journey__scrim" aria-hidden="true" />
 
       <div ref={introRef} className="journey__intro container">
@@ -158,7 +200,7 @@ export default function Journey() {
             <span
               key={ch.num}
               className={`journey__stop${i <= chapter ? ' is-on' : ''}`}
-              style={{ left: `${PIN_PROGRESS[i] * 100}%` }}
+              style={{ left: `${PINS[i] * 100}%` }}
             >
               <span className="journey__dot" />
               <span className="journey__stop-label">{ch.place}</span>

@@ -236,6 +236,15 @@ export const journey = {
       km: 2710,
     },
   ],
+  // Real footage behind the flight, in route order. `at` is the scroll progress
+  // (0..1) where each shot fades in; swap in your own clips/photos per region.
+  media: [
+    { at: 0, video: heroVideo, poster: heroPoster },
+    { at: 0.25, image: img('glacial-trek') },
+    { at: 0.5, image: img('spiti') },
+    { at: 0.75, image: img('ladakh') },
+    { at: 0.9, image: img('lakeside-stars') }, // the night sky finale
+  ],
 };
 
 /*
