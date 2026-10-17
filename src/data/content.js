@@ -268,6 +268,12 @@ const dummy = (caption) => ({
   caption,
 });
 const photoSet = (place, captions) => captions.map((c) => dummy(`${place} — ${c}`));
+// Real photos, converted from the phone's HEIC originals in public/images/KALSUBAI.
+const kalsubai = (n, caption) => ({
+  src: `/images/places/kalsubai/${String(n).padStart(2, '0')}.jpg`,
+  alt: `Kalsubai — ${caption}`,
+  caption: `Kalsubai — ${caption}`,
+});
 
 export const placeStories = [
   {
@@ -361,9 +367,22 @@ export const placeStories = [
       { label: 'Grade', value: 'Moderate · ladders' },
       { label: 'Best season', value: 'Jul – Feb' },
     ],
-    cover: dummy('Kalsubai summit at sunrise'),
-    inset: [dummy('Iron ladders'), dummy('Summit temple')],
-    photos: photoSet('Kalsubai', ['Bari village', 'Night climb', 'Iron ladders', 'Summit temple', 'Sunrise layers', 'Alang–Madan–Kulang']),
+    cover: kalsubai(3, 'Sunrise over the Sahyadri from the summit'),
+    inset: [kalsubai(5, 'Golden light on the summit'), kalsubai(11, 'The crew under the summit flags')],
+    photos: [
+      kalsubai(1, 'Night climb — village lights below'),
+      kalsubai(2, 'First light on the ridge'),
+      kalsubai(3, 'Sunrise over the Sahyadri'),
+      kalsubai(4, 'Watching the sun come up'),
+      kalsubai(5, 'Golden light on the summit'),
+      kalsubai(6, 'Made it to the top'),
+      kalsubai(7, 'Above the Bhandardara basin'),
+      kalsubai(8, 'Catching breath on the rocks'),
+      kalsubai(9, 'The whole crew at the summit'),
+      kalsubai(10, 'One more for the diaries'),
+      kalsubai(11, 'Under the summit flags'),
+      kalsubai(12, 'Summit selfie'),
+    ],
   },
   {
     slug: 'sandhan-valley',
